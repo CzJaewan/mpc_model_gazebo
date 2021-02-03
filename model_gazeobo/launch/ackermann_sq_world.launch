@@ -1,11 +1,67 @@
+<?xml version="1.0"?>
+
+<!-- ackermann_vehicle.launch
+
+Use Gazebo to simulate a vehicle with Ackermann steering.
+
+Arguments:
+    namespace (string, default: ackermann_vehicle)
+        Vehicle namespace.
+    world_name (string, default: worlds/empty.world)
+        Gazebo world name.
+    cmd_timeout (float, default: 0.5)
+        Command timeout passed to the ackermann_controller.py node.
+    x (float, default: 0.0)
+    y (float, default: 0.0)
+    z (float, default: 0.1)
+    roll (float, default: 0.0)
+    pitch (float, default: 0.0)
+    yaw (float, default: 0.0)
+        Vehicle pose. x, y, and z are measured in meters. roll, pitch, and yaw
+        are measured in radians.
+
+Copyright (c) 2013 Wunderkammer Laboratory
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <launch>
 
-  <arg name="x_pos" default="0.0"/>
-  <arg name="y_pos" default="0.0"/>
-  <arg name="z_pos" default="0.0"/>
-  <arg name="roll" default="0.0"/>
-  <arg name="pitch" default="0.0"/>
-  <arg name="yaw" default="-1.5701"/>
+  <arg name="namespace"   default="ackermann_vehicle"/>
+  <arg name="world"       default="empty" doc="worlds: [empty, warehouse, checkerboard]"/>
+  <arg name="cmd_timeout" default="0.5"/>
+  <arg name="rectify"     default="true" />
+  <arg name="stereo_view" default="false" />
+
+  <!-- Vehicle pose -->
+  <arg name="x_pos"           default="0.0"/>
+  <arg name="y_pos"           default="0.0"/>
+  <arg name="z_pos"           default="0.2"/>
+  <arg name="roll"        default="0.0"/>
+  <arg name="pitch"       default="0.0"/>
+  <arg name="yaw"         default="0.0"/>
+
+  <!-- load robot description -->
+
+  <param name="robot_description"
+          command="$(find xacro)/xacro $(find mpc_model_description)/urdf/car_like/ackermann_bot.urdf.xacro"/>
+
+  <node name="vehicle_state_publisher" pkg="robot_state_publisher"
+        type="robot_state_publisher">
+    <param name="publish_frequency" value="30.0"/>
+  </node>
+
+  <!-- Create the world. -->
 
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" value="$(find mpc_model_gazebo)/models/empty.world" />
@@ -16,12 +72,22 @@
     <arg name="debug" value="false"/>
   </include>
 
-   <param name="robot_description" command="$(find xacro)/xacro.py $(find steerbot)/urdf/steerbot.xacro" />
+  <!-- Spawn the vehicle. -->
+  <node name="spawn_vehicle" pkg="gazebo_ros" type="spawn_model"
+        args="-urdf -param robot_description -model ackermann_bot
+              -x $(arg x_pos) -y $(arg x_pos) -z $(arg x_pos)
+              -R $(arg roll) -P $(arg pitch) -Y $(arg yaw) -param robot_description"/>
 
-   <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-urdf -model ackermann_bot -x $(arg x_pos) -y $(arg y_pos) -z $(arg z_pos) -R $(arg roll) -P $(arg pitch) -Y $(arg yaw) -param robot_description" />
-      
-   <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
-       <param name="publish_frequency" type="double" value="50.0" />
-   </node>
+  <!-- Load the joint controllers. One of these publishes the joint states
+        to joint_states. -->
+  <node name="controller_spawner" pkg="controller_manager" type="spawner"
+        args="$(find mpc_model_gazebo)/config/car_like/ackermann_bot_joint_ctrlr_params.yaml"/>
+
+  <!-- Control the steering, axle, and shock absorber joints. -->
+  <node name="ackermann_controller" pkg="mpc_model_gazebo"
+        type="ackermann_controller.py">
+    <param name="cmd_timeout" value="$(arg cmd_timeout)"/>
+    <rosparam file="$(find mpc_model_gazebo)/config/car_like/ackermann_bot_ackermann_ctrlr_params.yaml" command="load"/>
+  </node>
 
 </launch>
